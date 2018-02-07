@@ -1,24 +1,18 @@
-from urlparse import urljoin
+from urllib.parse import urljoin
 import json
 import time
-
+import pandas as pd
 import requests
 
 
-class QueryResult(object):
-    def __init__(self, rows, query):
-        self.query = query
-        self.rows = rows
-
-    @classmethod
-    def create(cls, res):
-        rows = res['query_result']['data']['rows']
-        query = res['query_result']['query']
-        return QueryResult(rows, query)
-
-
 class Client(object):
-    def __init__(self, host, api_key, data_source_id):
+    '''
+    Client for fetching from redash
+    host : must be "http(s)://foo.bar"
+    api_key : user key is recommended
+    data_source_id : default = 1. more detail, Client.data_sources()    
+    '''
+    def __init__(self, host, api_key, data_source_id=1):
         self.api_base = urljoin(host, 'api')
         self.api_key = api_key
         self.data_source_id = data_source_id
@@ -48,21 +42,22 @@ class Client(object):
 
         return queries
 
-    def query(self, query, retry_num=30, interval_sec=1):
-        res_j = self._post_query(query).json()
+    def query(self, query, data_source_id = None, retry_num=30, interval_sec=1):
+        data_source_id = self.data_source_id if data_source_id is None else data_source_id
+        res_j = self._post_query(query, data_source_id).json()
         retried = 0
         while not self._query_completed(res_j):
             time.sleep(interval_sec)
-            res_j = self._post_query(query).json()
+            res_j = self._post_query(query, data_source_id).json()
             retried += 1
             if retried > retry_num:
                 raise Exception('Max retry num reached.')
-        return QueryResult.create(res_j)
+        return pd.DataFrame(res_j['query_result']['data']['rows'])
 
-    def _post_query(self, query):
+    def _post_query(self, query, data_source_id):
         data = {
             'query': query,
-            'data_source_id': self.data_source_id
+            'data_source_id': data_source_id
         }
         return self._api_post('query_results', data)
 
